@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Live Poll</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px;max-width:900px}
+    textarea{width:100%;min-height:140px}
+    .box{border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+    .muted{color:#666}
+    button{padding:10px 14px;border-radius:10px;border:1px solid #ccc;background:#fff;cursor:pointer}
+    button:hover{background:#f6f6f6}
+    pre{background:#f7f7f7;padding:12px;border-radius:10px;overflow:auto}
+  </style>
+</head>
+<body>
+  <h1>Simple Live Poll</h1>
+  <p class="muted">Upload a poll JSON and get a unique URL. In-memory only (restart resets). Polls auto-expire.</p>
+
+  <div class="box">
+    <h2>Create a poll</h2>
+    <form method="POST" action="/create">
+      <label><b>Poll JSON</b></label><br/>
+      <textarea name="spec" placeholder='{"question_html":"...","options":[...]}'></textarea><br/>
+      <button type="submit">Create poll</button>
+    </form>
+  </div>
+
+  <div class="box">
+    <h3>Example JSON</h3>
+    <pre>{
+  "question_html": "&lt;h2&gt;How confident are you?&lt;/h2&gt;",
+  "options": [
+    {"id":"a","label_html":"Very confident"},
+    {"id":"b","label_html":"Somewhat confident"},
+    {"id":"c","label_html":"Not yet"}
+  ],
+  "free_text": {
+    "enabled": true,
+    "prompt_html": "Questions or comments?",
+    "allow_upvotes": true,
+    "max_len": 240
+  },
+  "settings": {
+    "one_vote_per_device": true
+  }
+}</pre>
+  </div>
+</body>
+</html>
+

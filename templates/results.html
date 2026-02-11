@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Live Results</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px;max-width:1000px}
+    .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+    .box{border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0;flex:1;min-width:320px}
+    .muted{color:#666}
+    button{padding:6px 10px;border-radius:10px;border:1px solid #ccc;background:#fff;cursor:pointer}
+    button:hover{background:#f6f6f6}
+    canvas{max-width:520px;width:100%;height:auto}
+    .ft-item{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;border-top:1px solid #eee;padding:10px 0}
+    .ft-text{white-space:pre-wrap;word-break:break-word}
+    .pill{background:#f7f7f7;border-radius:999px;padding:2px 10px}
+    a{color:inherit}
+  </style>
+</head>
+<body>
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h1 style="margin:0">Live Results</h1>
+      <div class="muted" id="subtitle"></div>
+    </div>
+    <div style="text-align:right">
+      <div><a id="pollLink" href="#">Back to poll</a></div>
+      <div class="muted" style="margin-top:8px">Download</div>
+      <div>
+        <a id="dlJson" href="#">JSON</a> · <a id="dlCsv" href="#">CSV</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box">
+      <div id="question"></div>
+      <div class="muted" id="totalVotes"></div>
+      <canvas id="pie" width="520" height="320"></canvas>
+      <div id="legend" class="muted"></div>
+    </div>
+
+    <div class="box">
+      <h3 style="margin-top:0">Free text</h3>
+      <div class="muted" id="ftHint"></div>
+      <div id="ftList"></div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  const pollId = "{{POLL_ID}}";
+  const base = "/p/" + pollId;
+
+  document.getElementById("pollLink").href = base;
+  document.getElementById("dlJson").href = base + "/download.json";
+  document.getElementById("dlCsv").href = base + "/download.csv";
+  document.getElementById("subtitle").textContent = "Poll: " + pollId;
+
+  const pie = document.getElementById("pie");
+  const ctx = pie.getContext("2d");
+
+  function drawPie(values) {
+    const total = values.reduce((a,b)=>a+b,0);
+    ctx.clearRect(0,0,pie.width,pie.height);
+    if (!total) {
+      ctx.font = "16px system-ui";
+      ctx.fillText("No votes yet.", 20, 40);
+      return;
+    }
+    const cx = 160, cy = 160, r = 110;
+    let ang = -Math.PI/2;
+    for (let i=0;i<values.length;i++) {
+      const v = values[i];
+      const frac = v/total;
+      const ang2 = ang + frac * Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,ang,ang2);
+      ctx.closePath();
+      ctx.fillStyle = `hsl(${(i*360/Math.max(1,values.length))|0} 65% 55%)`;
+      ctx.fill();
+      ang = ang2;
+    }
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+    ctx.stroke();
+  }
+
+  function setLegend(items) {
+    const el = document.getElementById("legend");
+    el.innerHTML = "";
+    for (const it of items) {
+      const div = document.createElement("div");
+      div.textContent = `${it.label} — ${it.count}`;
+      el.appendChild(div);
+    }
+  }
+
+  function renderFreeText(texts, allowUpvotes) {
+    const list = document.getElementById("ftList");
+    const hint = document.getElementById("ftHint");
+    list.innerHTML = "";
+
+    if (!texts || texts.length === 0) {
+      hint.textContent = "No free-text answers yet.";
+      return;
+    }
+    hint.textContent = allowUpvotes ? "Students can +1 answers." : "";
+
+    for (const t of texts) {
+      const row = document.createElement("div");
+      row.className = "ft-item";
+
+      const left = document.createElement("div");
+      left.className = "ft-text";
+      // server already escaped, so use innerHTML safely (or textContent is fine too)
+      left.innerHTML = t.text;
+
+      const right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.gap = "8px";
+      right.style.alignItems = "center";
+
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      pill.textContent = String(t.upvotes);
+      right.appendChild(pill);
+
+      if (allowUpvotes) {
+        const btn = document.createElement("button");
+        btn.textContent = "+1";
+        btn.onclick = async () => {
+          btn.disabled = true;
+          try {
+            const r = await fetch(base + "/text/" + encodeURIComponent(t.id) + "/upvote", {method:"POST"});
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || "Failed");
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+          }
+        };
+        right.appendChild(btn);
+      }
+
+      row.appendChild(left);
+      row.appendChild(right);
+      list.appendChild(row);
+    }
+  }
+
+  function applySnapshot(snap) {
+    // uploader-controlled HTML
+    document.getElementById("question").innerHTML = snap.spec.question_html || "";
+    document.getElementById("totalVotes").textContent =
+      `Total votes: ${snap.total_votes || 0}`;
+
+    const opts = snap.spec.options || [];
+    const values = [];
+    const legend = [];
+    for (const opt of opts) {
+      const id = opt.id;
+      const label = (opt.label_html || "").replace(/<[^>]*>/g, "").trim() || id;
+      const c = (snap.counts && snap.counts[id]) ? snap.counts[id] : 0;
+      values.push(c);
+      legend.push({label, count:c});
+    }
+    drawPie(values);
+    setLegend(legend);
+
+    const ft = snap.spec.free_text || {};
+    const ftEnabled = !!ft.enabled;
+    const allowUpvotes = !!ft.allow_upvotes;
+    renderFreeText(ftEnabled ? (snap.texts || []) : [], allowUpvotes);
+  }
+
+  fetch(base + "/snapshot")
+    .then(r => r.json())
+    .then(applySnapshot)
+    .catch(()=>{});
+
+  const es = new EventSource(base + "/events");
+  es.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "results") applySnapshot(msg.data);
+    } catch {}
+  };
+})();
+</script>
+
+</body>
+</html>
+
